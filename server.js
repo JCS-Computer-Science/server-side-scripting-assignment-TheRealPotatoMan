@@ -26,65 +26,100 @@ server.get("/newgame", (req, res) => {
 
 server.get("/gamestate", (req, res) => {
   //console.log(activeSessions[req.query.sessionID]);
-  res.status(200);
+  if (req.query.sessionID == undefined) {
+    res.status(400);
+    res.send({ error: "Bad Request" });
+  }
   let gameState = activeSessions[req.query.sessionID];
+  if (gameState == undefined) {
+    res.status(404);
+    res.send({ error: "Session Not Found" });
+  }
+  res.status(200);
   res.send({ gameState });
 });
 
 server.post("/guess", (req, res) => {
-  res.status(201);
   let guess = req.body.guess.toLowerCase();
   let sessionID = req.body.sessionID;
   let gameState = activeSessions[sessionID];
+  res.status(201);
+
+  if (gameState.remainingGuesses <= 0) {
+    res.status(400);
+    gameState.gameOver = true;
+    res.send({ error: "Bad Request: No Guesses Remaining" });
+  } else if (gameState.remainingGuesses == 1) {
+    gameState.gameOver = true;
+  }
+
+  //FIX THIS \/
+  if (guess == gameState.wordToGuess) {
+    res.status(201);
+    gameState.gameOver = true;
+    res.send({ error: "Word Guessed" });
+  }
+
+  if (sessionID == undefined) {
+    res.status(400);
+    res.send({ error: "Bad Request" });
+  }
+  console.log(activeSessions);
+  if (gameState == undefined) {
+    res.status(404);
+    res.send({ error: "Session Not Found" });
+  }
+  if (guess.length != 5) {
+    res.status(400);
+    res.send({ error: "Bad Request: Invalid Length" });
+  }
+  for (let i = 0; i < 5; i++) {
+    if (!/[a-zA-Z]/.test(guess.charAt(i))) {
+      res.status(400);
+      res.send({ error: "Bad Request: Invalid Characters" });
+    }
+  }
+
   console.log(guess);
   console.log(sessionID);
 
-  gameState.guesses.push(guess);
   console.log(gameState.guesses);
   gameState.remainingGuesses--;
+  let guessStateContainer = [];
   for (let i = 0; i < 5; i++) {
     console.log("check letter");
-    if (
-      gameState.wordToGuess.charAt(i) ==
-      gameState.guesses[gameState.guesses.length - 1].charAt(i)
-    ) {
-      if (checkForExistence(gameState, i, "right")) {
+    if (gameState.wordToGuess.charAt(i) == guess.charAt(i)) {
+      var guessState = { value: guess.charAt(i), result: "RIGHT" };
+      if (checkForExistence(gameState, i, "right", guess)) {
         console.log("existence null");
-        gameState.rightLetters.push(
-          gameState.guesses[gameState.guesses.length - 1].charAt(i)
-        );
+        gameState.rightLetters.push(guess.charAt(i));
+
         console.log("right");
       }
-    } else if (
-      checkForInclusion(
-        gameState.guesses[gameState.guesses.length - 1].charAt(i),
-        gameState.wordToGuess
-      )
-    ) {
-      if (checkForExistence(gameState, i, "close")) {
+    } else if (checkForInclusion(guess.charAt(i), gameState.wordToGuess)) {
+      var guessState = { value: guess.charAt(i), result: "CLOSE" };
+      if (checkForExistence(gameState, i, "close", guess)) {
         console.log("existence null");
-        gameState.closeLetters.push(
-          gameState.guesses[gameState.guesses.length - 1].charAt(i)
-        );
+        gameState.closeLetters.push(guess.charAt(i));
         console.log("close");
       }
     } else {
-      if (checkForExistence(gameState, i, "wrong")) {
+      var guessState = { value: guess.charAt(i), result: "WRONG" };
+      if (checkForExistence(gameState, i, "wrong", guess)) {
         console.log("existence null");
-        gameState.wrongLetters.push(
-          gameState.guesses[gameState.guesses.length - 1].charAt(i)
-        );
+        gameState.wrongLetters.push(guess.charAt(i));
         console.log("wrong");
       }
     }
+    guessStateContainer.push(guessState);
+    console.log(guessState);
   }
-  console.log(gameState);
-
+  gameState.guesses.push(guessStateContainer);
   res.send({ gameState });
 });
 
-function checkForExistence(gameState, position, desiredChange) {
-  let letter = gameState.guesses[0].charAt(position);
+function checkForExistence(gameState, position, desiredChange, guess) {
+  let letter = guess.charAt(position);
   if (desiredChange == "close") {
     if (gameState.closeLetters.includes(letter)) {
       return false;
@@ -116,6 +151,46 @@ function checkForInclusion(letter, wordToGuess) {
   }
 }
 
+server.delete("/reset", (req, res) => {
+  if (req.query.sessionID == undefined) {
+    res.status(400);
+    res.send({ error: "Bad Request" });
+  }
+  let gameState = activeSessions[req.query.sessionID];
+  if (gameState == undefined) {
+    res.status(404);
+    res.send({ error: "Session Not Found" });
+  }
+  res.status(200);
+  gameState = {
+    wordToGuess: undefined,
+    guesses: [],
+    wrongLetters: [],
+    closeLetters: [],
+    rightLetters: [],
+    remainingGuesses: 6,
+    gameOver: false,
+  };
+  res.send({ gameState });
+});
+
+server.delete("/delete", (req, res) => {
+  let gameState = req.query.sessionID;
+  if (gameState == undefined) {
+    res.status(400);
+    res.send({ error: "Bad Request" });
+  }
+  gameState = activeSessions[req.query.sessionID];
+  if (gameState == undefined) {
+    res.status(404);
+    res.send({ error: "Session Not Found" });
+  }
+
+  activeSessions[req.query.sessionID] = null;
+
+  res.status(204);
+  res.send({});
+});
 //Do not remove this line. This allows the test suite to start
 //multiple instances of your server on different ports
 module.exports = server;
